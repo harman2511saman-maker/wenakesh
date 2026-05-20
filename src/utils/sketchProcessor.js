@@ -33,11 +33,7 @@ const processGraphite = (img, canvas, ctx, width, height) => {
       const i = (y * width + x) * 4;
       const gray = 0.299 * sourceData[i] + 0.587 * sourceData[i+1] + 0.114 * sourceData[i+2];
       
-      const distX = (x - width/2) / (width/2);
-      const distY = (y - height/2) / (height/2);
-      const dist = Math.sqrt(distX*distX + distY*distY);
-      
-      if (gray > 220 || dist > 0.85) continue;
+      if (gray > 220) continue;
       
       const opacity = (255 - gray) / 255;
       

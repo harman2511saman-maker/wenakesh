@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Download, Image as ImageIcon, Trash2, Eye, Sparkles, Layers, Pencil, Box, Loader2 } from 'lucide-react';
 import ComparisonSlider from './ComparisonSlider';
-import html2canvas from 'html2canvas';
 import { processImageStyle } from '../utils/sketchProcessor';
 
 const STYLES = [
@@ -17,23 +16,25 @@ const SketchImage = ({ image, onRemove }) => {
   const [processedSrc, setProcessedSrc] = useState(image.src);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleDownloadPNG = async () => {
-    const card = document.getElementById(`sketch-canvas-${image.id}`);
-    const canvas = await html2canvas(card);
+  const downloadRawImage = (format) => {
     const link = document.createElement('a');
-    link.download = `wenakesh-${activeStyle}-${image.name}.png`;
-    link.href = canvas.toDataURL();
-    link.click();
+    link.download = `wenakesh-${activeStyle}-${image.name}.${format}`;
+    
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      link.href = canvas.toDataURL(`image/${format === 'jpg' ? 'jpeg' : 'png'}`, 1.0);
+      link.click();
+    };
+    img.src = processedSrc;
   };
 
-  const handleDownloadJPG = async () => {
-    const card = document.getElementById(`sketch-canvas-${image.id}`);
-    const canvas = await html2canvas(card);
-    const link = document.createElement('a');
-    link.download = `wenakesh-${activeStyle}-${image.name}.jpg`;
-    link.href = canvas.toDataURL('image/jpeg', 0.9);
-    link.click();
-  };
+  const handleDownloadPNG = () => downloadRawImage('png');
+  const handleDownloadJPG = () => downloadRawImage('jpg');
 
   const changeStyle = (styleId) => {
     if (styleId === activeStyle || isProcessing) return;
