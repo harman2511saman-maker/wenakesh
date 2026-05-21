@@ -39,7 +39,7 @@ export const processFile = async (file, styleType = 'graphite') => {
   const isHeic = file.type === 'image/heic' || file.type === 'image/heif' || nameLower.endsWith('.heic') || nameLower.endsWith('.heif');
   if (isHeic) {
     try {
-      const heicModule = await import('heic2any');
+      const heicModule = await import(/* @vite-ignore */ 'heic2any');
       const heic2any = heicModule && (heicModule.default || heicModule);
       if (typeof heic2any === 'function') {
         const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
