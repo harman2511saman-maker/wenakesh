@@ -6,8 +6,18 @@ export const processImageStyle = (imageElement, styleType = 'graphite') => {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   
-  const width = imageElement.naturalWidth || imageElement.width;
-  const height = imageElement.naturalHeight || imageElement.height;
+  let width = imageElement.naturalWidth || imageElement.width;
+  let height = imageElement.naturalHeight || imageElement.height;
+
+  // Fix for high-resolution mobile photos (e.g. from new smartphones)
+  // Scaling down prevents canvas memory limits and performance issues
+  const MAX_SIZE = 1600;
+  if (width > MAX_SIZE || height > MAX_SIZE) {
+    const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+    width = Math.floor(width * ratio);
+    height = Math.floor(height * ratio);
+  }
+
   canvas.width = width;
   canvas.height = height;
 

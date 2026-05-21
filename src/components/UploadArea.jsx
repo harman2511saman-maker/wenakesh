@@ -27,12 +27,28 @@ const UploadArea = ({ onUpload }) => {
         img.onload = () => {
           const sketchedSrc = processImageStyle(img, activeStyle);
           
+          // Downscale the original image for storage to avoid QuotaExceededError
+          let origWidth = img.naturalWidth || img.width;
+          let origHeight = img.naturalHeight || img.height;
+          const MAX_ORIG_SIZE = 1600;
+          if (origWidth > MAX_ORIG_SIZE || origHeight > MAX_ORIG_SIZE) {
+            const ratio = Math.min(MAX_ORIG_SIZE / origWidth, MAX_ORIG_SIZE / origHeight);
+            origWidth = Math.floor(origWidth * ratio);
+            origHeight = Math.floor(origHeight * ratio);
+          }
+          const origCanvas = document.createElement('canvas');
+          origCanvas.width = origWidth;
+          origCanvas.height = origHeight;
+          const origCtx = origCanvas.getContext('2d');
+          origCtx.drawImage(img, 0, 0, origWidth, origHeight);
+          const safeOriginalSrc = origCanvas.toDataURL('image/jpeg', 0.85);
+
           const styleLabel = STYLES.find(s => s.id === activeStyle)?.label || '';
           
           onUpload({
             id: Date.now() + Math.random(),
             src: sketchedSrc,
-            originalSrc: e.target.result,
+            originalSrc: safeOriginalSrc,
             name: file.name.split('.')[0],
             styleId: activeStyle,
             styleLabel: styleLabel,
