@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Plus, Loader2, Sparkles, Layers, Pencil, Box } from 'lucide-react';
-import { processImageStyle } from '../utils/sketchProcessor';
+import { processImageStyle, processFile } from '../utils/sketchProcessor';
 
 const STYLES = [
   { id: 'graphite', label: 'قەڵەم خەڵووز', icon: Pencil },
@@ -15,51 +15,30 @@ const UploadArea = ({ onUpload }) => {
   const fileInputRef = useRef(null);
 
   const handleFiles = (files) => {
-    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    const imageFiles = files.filter(file => (file.type && file.type.startsWith('image/')) || /\.heic$|\.heif$/i.test(file.name));
     if (imageFiles.length === 0) return;
 
     setIsProcessing(true);
-    
-    imageFiles.forEach(file => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const sketchedSrc = processImageStyle(img, activeStyle);
-          
-          // Downscale the original image for storage to avoid QuotaExceededError
-          let origWidth = img.naturalWidth || img.width;
-          let origHeight = img.naturalHeight || img.height;
-          const MAX_ORIG_SIZE = 1600;
-          if (origWidth > MAX_ORIG_SIZE || origHeight > MAX_ORIG_SIZE) {
-            const ratio = Math.min(MAX_ORIG_SIZE / origWidth, MAX_ORIG_SIZE / origHeight);
-            origWidth = Math.floor(origWidth * ratio);
-            origHeight = Math.floor(origHeight * ratio);
-          }
-          const origCanvas = document.createElement('canvas');
-          origCanvas.width = origWidth;
-          origCanvas.height = origHeight;
-          const origCtx = origCanvas.getContext('2d');
-          origCtx.drawImage(img, 0, 0, origWidth, origHeight);
-          const safeOriginalSrc = origCanvas.toDataURL('image/jpeg', 0.85);
 
-          const styleLabel = STYLES.find(s => s.id === activeStyle)?.label || '';
-          
-          onUpload({
-            id: Date.now() + Math.random(),
-            src: sketchedSrc,
-            originalSrc: safeOriginalSrc,
-            name: file.name.split('.')[0],
-            styleId: activeStyle,
-            styleLabel: styleLabel,
-            date: new Date().toLocaleDateString('ku-IQ', { day: 'numeric', month: 'long', year: 'numeric' })
-          });
-          setIsProcessing(false);
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+    const promises = imageFiles.map(async (file) => {
+      try {
+        const { sketchedSrc, safeOriginalSrc } = await processFile(file, activeStyle);
+        const styleLabel = STYLES.find(s => s.id === activeStyle)?.label || '';
+        onUpload({
+          id: Date.now() + Math.random(),
+          src: sketchedSrc,
+          originalSrc: safeOriginalSrc,
+          name: file.name.split('.')[0],
+          styleId: activeStyle,
+          styleLabel: styleLabel,
+          date: new Date().toLocaleDateString('ku-IQ', { day: 'numeric', month: 'long', year: 'numeric' })
+        });
+      } catch (err) {
+        console.error('Failed to process file', file.name, err);
+      }
     });
+
+    Promise.all(promises).finally(() => setIsProcessing(false));
   };
 
   const handleDrop = (e) => {
@@ -102,7 +81,8 @@ const UploadArea = ({ onUpload }) => {
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
-          accept="image/*"
+          accept="image/*,.heic,.heif"
+          capture="environment"
           style={{ display: 'none' }}
         />
         

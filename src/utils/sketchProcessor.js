@@ -2,6 +2,8 @@
  * Ultimate Masterpiece Kurdish Portrait Engine
  * Supports: Graphite, Gold, Clay, and 3D Hologram
  */
+import EXIF from 'exif-js';
+
 export const processImageStyle = (imageElement, styleType = 'graphite') => {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
@@ -25,6 +27,129 @@ export const processImageStyle = (imageElement, styleType = 'graphite') => {
   if (styleType === 'clay') return processClay(imageElement, canvas, ctx, width, height);
   if (styleType === '3d') return process3D(imageElement, canvas, ctx, width, height);
   return processGraphite(imageElement, canvas, ctx, width, height);
+};
+
+// New helper: process an input File/Blob, handle HEIC conversion and EXIF orientation,
+// return sketched data URL and a downscaled safe original data URL.
+export const processFile = async (file, styleType = 'graphite') => {
+  let blob = file;
+
+  // Convert HEIC/HEIF to JPEG if necessary
+  const nameLower = (file.name || '').toLowerCase();
+  const isHeic = file.type === 'image/heic' || file.type === 'image/heif' || nameLower.endsWith('.heic') || nameLower.endsWith('.heif');
+  if (isHeic) {
+    try {
+      const heicModule = await import('heic2any');
+      const heic2any = heicModule && (heicModule.default || heicModule);
+      if (typeof heic2any === 'function') {
+        const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 });
+        blob = converted instanceof Blob ? converted : (Array.isArray(converted) ? converted[0] : blob);
+      }
+    } catch (e) {
+      console.warn('HEIC conversion unavailable or failed, continuing without conversion', e);
+    }
+  }
+
+  const orientation = await getExifOrientationSafe(blob);
+  const dataURL = await blobToDataURL(blob);
+  const img = await loadImage(dataURL);
+
+  // Create a canvas that applies orientation corrections and scaling similar to other code
+  const MAX_SIZE = 1600;
+  let width = img.naturalWidth || img.width;
+  let height = img.naturalHeight || img.height;
+
+  // Swap dims for rotations 5,6,7,8
+  const swap = orientation >= 5 && orientation <= 8;
+  if (swap) {
+    [width, height] = [height, width];
+  }
+
+  if (width > MAX_SIZE || height > MAX_SIZE) {
+    const ratio = Math.min(MAX_SIZE / width, MAX_SIZE / height);
+    width = Math.floor(width * ratio);
+    height = Math.floor(height * ratio);
+  }
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Set canvas size according to orientation
+  if (swap) {
+    canvas.width = height;
+    canvas.height = width;
+  } else {
+    canvas.width = width;
+    canvas.height = height;
+  }
+
+  applyOrientationDraw(ctx, img, orientation, canvas.width, canvas.height);
+
+  // Create an Image element from the oriented canvas to feed the existing processors
+  const orientedDataURL = canvas.toDataURL('image/jpeg', 0.92);
+  const orientedImg = await loadImage(orientedDataURL);
+
+  const sketchedSrc = processImageStyle(orientedImg, styleType);
+
+  // Create safe original downscaled image (keeps EXIF orientation applied)
+  const origCanvas = document.createElement('canvas');
+  origCanvas.width = canvas.width; origCanvas.height = canvas.height;
+  const octx = origCanvas.getContext('2d');
+  octx.drawImage(orientedImg, 0, 0, origCanvas.width, origCanvas.height);
+  const safeOriginalSrc = origCanvas.toDataURL('image/jpeg', 0.85);
+
+  return { sketchedSrc, safeOriginalSrc };
+};
+
+// Helpers
+const blobToDataURL = (blob) => new Promise((resolve, reject) => {
+  const fr = new FileReader();
+  fr.onload = (e) => resolve(e.target.result);
+  fr.onerror = reject;
+  fr.readAsDataURL(blob);
+});
+
+const loadImage = (dataURL) => new Promise((resolve, reject) => {
+  const img = new Image();
+  img.onload = () => resolve(img);
+  img.onerror = reject;
+  img.src = dataURL;
+});
+
+const getExifOrientationSafe = async (fileOrBlob) => {
+  return new Promise((resolve) => {
+    try {
+      EXIF.getData(fileOrBlob, function() {
+        const o = EXIF.getTag(this, 'Orientation');
+        resolve(o || 1);
+      });
+    } catch (e) {
+      resolve(1);
+    }
+  });
+};
+
+const applyOrientationDraw = (ctx, img, orientation, targetW, targetH) => {
+  // Draw the image onto ctx with EXIF orientation applied.
+  // Orientation values: 1=no transform, 2=flipH,3=rotate180,4=flipV,5=transpose,6=rotate90,7=transverse,8=rotate270
+  switch (orientation) {
+    case 2: // horizontal flip
+      ctx.translate(targetW, 0); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0, targetW, targetH); break;
+    case 3: // 180 rotate
+      ctx.translate(targetW, targetH); ctx.rotate(Math.PI); ctx.drawImage(img, 0, 0, targetW, targetH); break;
+    case 4: // vertical flip
+      ctx.translate(0, targetH); ctx.scale(1, -1); ctx.drawImage(img, 0, 0, targetW, targetH); break;
+    case 5: // transpose
+      ctx.rotate(0.5 * Math.PI); ctx.scale(1, -1); ctx.drawImage(img, 0, 0, targetH, targetW); break;
+    case 6: // rotate 90
+      ctx.rotate(0.5 * Math.PI); ctx.translate(0, -targetH); ctx.drawImage(img, 0, 0, targetH, targetW); break;
+    case 7: // transverse
+      ctx.rotate(-0.5 * Math.PI); ctx.scale(1, -1); ctx.drawImage(img, 0, 0, targetH, targetW); break;
+    case 8: // rotate 270
+      ctx.rotate(-0.5 * Math.PI); ctx.translate(-targetW, 0); ctx.drawImage(img, 0, 0, targetH, targetW); break;
+    default:
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+  }
 };
 
 // 1. Graphite Sketch (قەڵەم خەڵووز)
