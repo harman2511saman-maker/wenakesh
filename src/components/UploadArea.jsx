@@ -20,25 +20,50 @@ const UploadArea = ({ onUpload }) => {
 
     setIsProcessing(true);
 
-    const promises = imageFiles.map(async (file) => {
-      try {
-        const { sketchedSrc, safeOriginalSrc } = await processFile(file, activeStyle);
-        const styleLabel = STYLES.find(s => s.id === activeStyle)?.label || '';
-        onUpload({
-          id: Date.now() + Math.random(),
-          src: sketchedSrc,
-          originalSrc: safeOriginalSrc,
-          name: file.name.split('.')[0],
-          styleId: activeStyle,
-          styleLabel: styleLabel,
-          date: new Date().toLocaleDateString('ku-IQ', { day: 'numeric', month: 'long', year: 'numeric' })
-        });
-      } catch (err) {
-        console.error('Failed to process file', file.name, err);
-      }
+    imageFiles.forEach((file) => {
+      const id = Date.now() + Math.random();
+      const previewURL = URL.createObjectURL(file);
+      const styleLabel = STYLES.find(s => s.id === activeStyle)?.label || '';
+
+      // Immediately add a lightweight preview so the UI is responsive
+      onUpload({
+        id,
+        src: previewURL,
+        originalSrc: previewURL,
+        name: file.name.split('.')[0],
+        styleId: activeStyle,
+        styleLabel: styleLabel,
+        date: new Date().toLocaleDateString('ku-IQ', { day: 'numeric', month: 'long', year: 'numeric' }),
+        processing: true
+      });
+
+      // Process in background and then update the entry by re-sending with same id
+      (async () => {
+        try {
+          const { sketchedSrc, safeOriginalSrc } = await processFile(file, activeStyle);
+          onUpload({
+            id,
+            src: sketchedSrc,
+            originalSrc: safeOriginalSrc,
+            name: file.name.split('.')[0],
+            styleId: activeStyle,
+            styleLabel: styleLabel,
+            date: new Date().toLocaleDateString('ku-IQ', { day: 'numeric', month: 'long', year: 'numeric' }),
+            processing: false
+          });
+        } catch (err) {
+          console.error('Failed to process file', file.name, err);
+          // mark processing false even on failure
+          onUpload({ id, processing: false });
+        } finally {
+          // release preview URL
+          URL.revokeObjectURL(previewURL);
+        }
+      })();
     });
 
-    Promise.all(promises).finally(() => setIsProcessing(false));
+    // Quick exit; processing continues in background
+    setIsProcessing(false);
   };
 
   const handleDrop = (e) => {
@@ -82,7 +107,6 @@ const UploadArea = ({ onUpload }) => {
           ref={fileInputRef}
           onChange={handleFileChange}
           accept="image/*,.heic,.heif"
-          capture="environment"
           style={{ display: 'none' }}
         />
         

@@ -26,7 +26,15 @@ function App() {
   }, [images]);
 
   const handleUpload = (newImage) => {
-    setImages(prev => [newImage, ...prev]);
+    setImages(prev => {
+      if (!newImage || !newImage.id) return prev;
+      const exists = prev.find(img => img.id === newImage.id);
+      if (exists) {
+        // replace existing entry, keep order
+        return prev.map(img => img.id === newImage.id ? { ...img, ...newImage } : img);
+      }
+      return [newImage, ...prev];
+    });
   };
 
   const handleRemove = (id) => {
